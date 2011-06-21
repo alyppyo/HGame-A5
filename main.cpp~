@@ -1,0 +1,274 @@
+#include <iostream>
+#include <cmath>
+#include <cstdlib>
+#include <ctime>
+#include <allegro5/allegro.h>
+#include <allegro5/allegro_image.h>
+
+#include "ScrollingBackground.h"
+#include "Animation.h"
+#include "Element.h"
+
+#define FPS_1L 30
+#define FPS_2L 20
+#define WIDTH 800
+#define HEIGHT 600
+#define MAX_ANGLE ALLEGRO_PI/8
+#define NUM_ELEMENTS 30
+
+using namespace std;
+
+ALLEGRO_BITMAP * casa;
+ALLEGRO_BITMAP * cacto;
+ALLEGRO_BITMAP * cacto2;
+ALLEGRO_BITMAP * nuvem;
+ALLEGRO_BITMAP * nuvem2;
+
+Element * randomElement () {
+	int number = rand() % 2;
+	ALLEGRO_BITMAP * imagem;
+
+	switch(number) {
+		case 0:
+			imagem = nuvem;
+			break;
+		case 1:
+			imagem = nuvem2;
+			break;
+	}
+
+	float scale = 0.6 + ((rand()%100)/100.f);
+
+	return new Element(imagem, WIDTH, 20 + (rand()%250), 4, rand()%2, scale);
+}
+
+Element * randomElementGround () {
+	int number = rand() % 2;
+	ALLEGRO_BITMAP * imagem;
+
+	switch(number) {
+		case 0:
+			imagem = cacto;
+			break;
+		case 1:
+			imagem = cacto2;
+			break;
+	}
+
+	float scale = (30 + (rand()%20))/100.f;
+
+	return new Element(imagem, WIDTH, 450 + (rand()%70), 3, rand()%2, scale);
+}
+
+
+int main()
+{
+	ALLEGRO_DISPLAY     * display    = NULL;
+   ALLEGRO_EVENT_QUEUE * eventQueue = NULL;
+
+   ALLEGRO_TIMER       * timer1stLayer = NULL;
+	ALLEGRO_TIMER       * timer2ndLayer = NULL;
+	ALLEGRO_TIMER       * timerCreateElements = NULL;
+	ALLEGRO_TIMER       * timerCreateElementsGround = NULL;
+
+   ALLEGRO_BITMAP      * helicopterSpriteSheet = NULL;
+	ALLEGRO_BITMAP		  * imagePlanoDeFundo = NULL;
+	ALLEGRO_BITMAP		  * montanhas = NULL;
+	ALLEGRO_BITMAP		  * chao = NULL;
+
+	int currentElement = 0;
+	int currentElementGround = 0;
+	int randomNumber;
+
+	srand(time(NULL));
+
+	double gravidade = 1;
+
+	if(!al_init()) {
+		cout << "Problemas na configuracao do Allegro. Abortando..." << endl;
+		return 1;
+	}
+
+	al_init_image_addon();
+
+  	timer1stLayer = al_create_timer(1.0 / FPS_1L);
+   if(!timer1stLayer) {
+		cout << "failed to create timer!\n" << endl;
+      return -1;
+   }
+
+	timer2ndLayer = al_create_timer(1.0 / FPS_2L);
+   if(!timer2ndLayer) {
+		cout << "failed to create timer!\n" << endl;
+      return -1;
+   }
+
+	timerCreateElements = al_create_timer(2);
+   if(!timerCreateElements) {
+		cout << "failed to create timer!\n" << endl;
+      return -1;
+   }
+
+	timerCreateElementsGround = al_create_timer(1);
+   if(!timerCreateElementsGround) {
+		cout << "failed to create timer!\n" << endl;
+      return -1;
+   }
+ 
+   display = al_create_display(WIDTH, HEIGHT);
+   if(!display) {
+		cout << "failed to create display!\n" << endl;
+      return -1;
+   }
+
+	eventQueue = al_create_event_queue();
+
+	al_install_keyboard();
+	if(!al_is_keyboard_installed()) {
+		cout << "Problemas na deteccao do teclado. Abortando..." << endl;
+	}
+
+	al_register_event_source(eventQueue, al_get_display_event_source(display));
+   al_register_event_source(eventQueue, al_get_timer_event_source(timer1stLayer));
+   al_register_event_source(eventQueue, al_get_timer_event_source(timer2ndLayer));
+   al_register_event_source(eventQueue, al_get_timer_event_source(timerCreateElements));
+   al_register_event_source(eventQueue, al_get_timer_event_source(timerCreateElementsGround));
+	al_register_event_source(eventQueue, al_get_keyboard_event_source());
+
+	helicopterSpriteSheet = al_load_bitmap("img/sprite_helicopter.png");
+	imagePlanoDeFundo = al_load_bitmap("img/planoDeFundo.png");
+	montanhas = al_load_bitmap("img/montanhas.png");
+	chao = al_load_bitmap("img/chao.png");
+
+	cacto = al_load_bitmap("img/cactus.png");
+	cacto2 = al_load_bitmap("img/cactus_2.png");
+	nuvem = al_load_bitmap("img/nuvem_01.png");
+	nuvem2 = al_load_bitmap("img/nuvem_02.png");
+
+	Animation * helicopter = new Animation(helicopterSpriteSheet, 3);	
+	ScrollingBackground * bgPlanoDeFundo = new ScrollingBackground(imagePlanoDeFundo, 0, Horizontal, 1);
+	ScrollingBackground * bgMontanhas = new ScrollingBackground(montanhas, -380, Horizontal, 2);
+	ScrollingBackground * bgChao = new ScrollingBackground(chao, -500, Horizontal, 3);
+
+	Element * objects[NUM_ELEMENTS];
+	Element * objectsGround[NUM_ELEMENTS];
+
+	for(int i = 0; i < NUM_ELEMENTS; i++) {
+		objects[i] = NULL;
+		objectsGround[i] = NULL;
+	}
+
+	al_start_timer(timer1stLayer);
+	al_start_timer(timer2ndLayer);
+	al_start_timer(timerCreateElements);
+	al_start_timer(timerCreateElementsGround);
+	
+	ALLEGRO_EVENT event;
+
+	while (true) {
+		if (al_event_queue_is_empty(eventQueue)) {
+			// 1a camada
+			bgPlanoDeFundo->draw();
+			
+			// 2a camada
+			bgMontanhas->draw();
+			bgChao->draw();
+
+			// 3a camada
+			for(int i = 0; i < NUM_ELEMENTS; i++) {
+				if (objects[i] != NULL) objects[i]->draw();
+				if (objectsGround[i] != NULL) objectsGround[i]->draw();
+			}
+
+			// 4a camada
+			helicopter->draw();
+
+			al_flip_display();
+		}
+
+ 		al_wait_for_event(eventQueue, &event);
+
+		switch (event.type)
+		{
+			case ALLEGRO_EVENT_DISPLAY_CLOSE:
+					return 0;
+					break;
+			case ALLEGRO_EVENT_KEY_CHAR:
+					if (event.keyboard.keycode == ALLEGRO_KEY_ESCAPE)
+						return 0;
+					else if (event.keyboard.keycode == ALLEGRO_KEY_UP) {
+						helicopter->y -= 5;
+						if(helicopter->y < 25) helicopter->y = 25;
+
+						if(helicopter->angle > -MAX_ANGLE) {
+							helicopter->angle -= 0.1f;
+						}
+
+						helicopter->up = true;
+						gravidade = 1;
+					}
+					break;
+			case ALLEGRO_EVENT_KEY_UP:
+					if (event.keyboard.keycode == ALLEGRO_KEY_UP) {
+						helicopter->up = false;
+					}
+					break;
+			case ALLEGRO_EVENT_TIMER:
+					if(event.timer.source == timer1stLayer) {
+						helicopter->update();
+						for(int i = 0; i < NUM_ELEMENTS; i++) {
+							if (objects[i] != NULL) objects[i]->update();
+						}
+
+						if(!helicopter->up) {
+							if(helicopter->angle < 0) {
+								helicopter->angle += 0.1f;
+							}
+
+							helicopter->y += 2 + gravidade;
+							if (helicopter->y + helicopter->h > HEIGHT) helicopter->y = HEIGHT - helicopter->h;
+							gravidade *= 1.05;
+						}
+					}
+					else if(event.timer.source == timer2ndLayer) {
+						bgPlanoDeFundo->update();
+						bgMontanhas->update();
+						bgChao->update();
+
+						for(int i = 0; i < NUM_ELEMENTS; i++) {
+							if (objects[i] != NULL) objects[i]->update();
+							if (objectsGround[i] != NULL) objectsGround[i]->update();
+						}
+					}
+					else if(event.timer.source == timerCreateElements) {
+						randomNumber = rand() % (int)(NUM_ELEMENTS * 1.5);
+
+						if(randomNumber < NUM_ELEMENTS) {
+							if(objects[currentElement] != NULL) delete objects[currentElement];
+
+							objects[currentElement] = randomElement();
+
+							currentElement++;
+							if(currentElement >= NUM_ELEMENTS) currentElement = 0;
+						}
+					}
+					else if(event.timer.source == timerCreateElementsGround) {
+						randomNumber = rand() % (int)(NUM_ELEMENTS * 1.5);
+
+						if(randomNumber < NUM_ELEMENTS) {
+							if(objectsGround[currentElementGround] != NULL) delete objectsGround[currentElementGround];
+
+							objectsGround[currentElementGround] = randomElementGround();
+
+							currentElementGround++;
+							if(currentElementGround >= NUM_ELEMENTS) currentElementGround = 0;
+						}
+					}
+					break;
+			default: break;
+		}
+	}
+
+	return 0;
+}
+
